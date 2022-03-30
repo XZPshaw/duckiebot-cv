@@ -50,12 +50,13 @@ cv.setTrackbarPos(vl, barsWindow, 0)
 cv.setTrackbarPos(vh, barsWindow, 255)
 
 
-def imgCallback(data):
+
+
+while True:
   #cv_image = bridge.imgmsg_to_cv2(data, "bgr8")
-  cap = bridge.imgmsg_to_cv2(data, "bgr8")
   #ret, frame = data.read()
   #frame = cv.GaussianBlur(frame, (5, 5), 0)
-    
+  cap = cv.imread("./201.png",1)
   # convert to HSV from BGR
   hsv = cv.cvtColor(cap, cv.COLOR_BGR2HSV)
 
@@ -80,16 +81,6 @@ def imgCallback(data):
   cv.imshow('Camera', cap)
 
   cv.waitKey(3)
-
-def main():
-  rospy.init_node('my_planner_node')
-  img_sub = rospy.Subscriber("/camera/image_raw", Image, imgCallback)
-  # # clean up our resources
-  # cap.release()
-  # cv.destroyAllWindows()
-
-  
-  rospy.spin()
 
 if __name__ == "__main__":
   main()

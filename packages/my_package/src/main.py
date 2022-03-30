@@ -7,6 +7,7 @@ import sys
 import rospy
 import cv2
 import numpy as np
+import rospkg
 from duckietown.dtros import DTROS, NodeType
 from cv_bridge import CvBridgeError,CvBridge
 from geometry_msgs.msg import Twist
@@ -33,22 +34,22 @@ class MyNode(DTROS):
         self.image_pub = rospy.Publisher("/output/image_raw/compressed",CompressedImage,queue_size=1)
         self.cmd_vel_pub = rospy.Publisher('/%s/car_cmd_switch_node/cmd'%self.host,Twist2DStamped, queue_size=1)
         #self.turtlebot = Robot()
-        self.default_linear_speed = 0.2         # v
+        self.default_linear_speed = 0.25         # v
         #self.current_linear_speed = 0.2
         self.match_stop_sign = False
         self.red_zone_detected = False
         self.descenter = 15
         self.descenter = 50
         self.shutdown = False
-        rospy.spin()
-        #self.hz = 60
-        #self.rate = rospy.Rate(self.hz)
-        #while not rospy.is_shutdown() and not self.shutdown:
-        #    self.rate.sleep()
-
-
+        self.image_to_detect_stop = None
+        self.rospack = rospkg.RosPack()
+        self.path = self.rospack.get_path("my_package")
+        self.im1 = cv2.imread(str(self.path)+"/src/stop.png",0)
+        #self.im1 = cv2.imread(str(self.path)+"/src/stop.png",0)
+        self.sift = cv2.SIFT_create()#find the keypoinst and descriptors with SIFT
+        self.kp2, self.des2 = self.sift.detectAndCompute(self.im1, None)
     def shut_down_info(self):
-        print("shuting down")
+        print("shuting downa")
         self.cmd_vel_pub.publish(Twist2DStamped())
         print("The running time of this node is %f seconds"%(time.time() - self.start_time))
 		
@@ -64,7 +65,6 @@ class MyNode(DTROS):
             print(e)
 
         height, width, channels = cv_image.shape
-        print(cv_image.shape)
 
         """
         crop the image so that the robot only make move decision based the closest(bottom-most) area without affected by
@@ -73,14 +73,14 @@ class MyNode(DTROS):
         width_crop_start = int(0.25*width)
         width_crop_end = int(0.75*width)
         width_crop_start = 160
-        width_crop_end = 480
+        width_crop_end = 480 ###480x640x3
         rows_to_watch = 100
         crop_img =cv_image[int((height)/2+ self.descenter):int((height)/2)+int(self.descenter+rows_to_watch),220:460,:]
         
         height, width, channels = crop_img.shape
-        print("crop_img:",crop_img.shape)
+        #print("crop_img:",crop_img.shape)
         hsv = cv2.cvtColor(crop_img,cv2.COLOR_BGR2HSV)
-
+        #self.image_to_detect_stop = cv_image[60:int(height*1.4),150:490,:]
         """ 
         #convert img from RGB to HSV
         #the code used to find the hsv threshold for each of blue,green,red, white color is from
@@ -89,16 +89,33 @@ class MyNode(DTROS):
         lower_all_color = np.array([0,0,193])
         upper_all_color = np.array([177,255,255])
         
-        lower_red = np.array([0,18,0])
-        upper_red = np.array([36,255,232])
-        lower_blue = np.array([117,18,0])
-        upper_blue = np.array([125,255,232])
-        lower_green = np.array([53,0,141])
-        upper_green = np.array([61,255,255])
+        lower_red = np.array([155,41,83])
+        upper_red = np.array([179,162,120])
+        
+        lower_red = np.array([142,32,69])
+        upper_red = np.array([179,190,164])
+
+        lower_red = np.array([134,28,29])
+        upper_red = np.array([179,255,255])
+               lower_red = np.array([148,51,79])
+        upper_red = np.array([179,255,255]) 
+        lower_red = np.array([148,51,79])
+        upper_red = np.array([179,255,255])
+        #lower_red = np.array([145,50,75])
+        #upper_red = np.array([179,255,255])
+                
         
         lower_white = np.array([0,0,193])
         upper_white = np.array([0,0,255])
         
+        #image_to_detect_top = cv_image[0:int(height*3),100:540,:]
+        image_to_detect_top = cv_image
+    
+        img_to_detect_hsv = cv2.cvtColor(image_to_detect_top,cv2.COLOR_BGR2HSV)
+
+        #print(image_to_detect_top.shape)
+        image_to_detect_stop = cv2.inRange(img_to_detect_hsv, lower_red,upper_red)
+        self.image_to_detect_stop = cv2.bitwise_and(cv_image, cv_image, mask =image_to_detect_stop)[0:int(height*1.5),50:590,:]
         lower_yellow = np.array([20,150,150])
         upper_yellow = np.array([55,255,255])
         mask_path = cv2.inRange(hsv, lower_all_color,upper_all_color)
@@ -124,11 +141,11 @@ class MyNode(DTROS):
         error_x = 0
         if len(contours_yellow) > 0:
         
-            print("m",m_path)
+            #print("m",m_path)
             try:
               cx,cy = m_path['m10']/m_path['m00'],m_path['m01']/m_path['m00']
               error_x = cx - width/2
-              print("yellow path")
+              #print("yellow path")
             except ZeroDivisionError:
               cx,cy = height/2, width/2
             res = cv2.bitwise_and(crop_img,crop_img,mask=mask_path)
@@ -153,59 +170,12 @@ class MyNode(DTROS):
         #source:https://docs.opencv.org/3.4/d1/de0/tutorial_py_feature_homography.html
         """
         
-        if self.red_zone_detected==True and self.match_stop_sign==False:
-            im1 = cv2.imread("../world/stop.png",0)
-            print("stop sign img:", im1.shape)
-            #cv_image = crop_img
-            MIN_MATCH_COUNT = 7
-            sift = cv2.SIFT_create()
-		
-		    #find the keypoinst and descriptors with SIFT
-            kp1, des1 = sift.detectAndCompute(cv_image,None)
-            kp2, des2 = sift.detectAndCompute(im1, None)
-            
-            FLANN_INDEX_KDTREE = 1
-            index_params = dict(algorithm = FLANN_INDEX_KDTREE, trees=5)
-            search_params = dict(checks = 50)
-		
-            flann = cv2.FlannBasedMatcher(index_params, search_params)
-            
-            matches = flann.knnMatch(des1, des2,k=2)
-            
-            good = []
-            for m,n in matches:
-                if m.distance < 0.7*n.distance:
-                    good.append(m)
-            
-            if len(good)>MIN_MATCH_COUNT:
-                print("stop sign found!!!!")
-                src_pts = np.float32([ kp1[m.queryIdx].pt for m in good ]).reshape(-1,1,2)
-                dst_pts = np.float32([ kp2[m.trainIdx].pt for m in good ]).reshape(-1,1,2)
-                M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC,5.0)
-                matchesMask = mask.ravel().tolist()
-                h,w = im1.shape
-                pts = np.float32([ [0,0],[0,h-1],[w-1,h-1],[w-1,0] ]).reshape(-1,1,2)
-                dst = cv2.perspectiveTransform(pts,M)
-                img2 = cv2.polylines(im1,[np.int32(dst)],True,255,3, cv2.LINE_AA)
-                self.match_stop_sign = True
-            else:
-                print( "Not enough matches are found - {}/{}".format(len(good),MIN_MATCH_COUNT))
-                matchesMask = None
-
-            draw_params = dict(matchColor = (0,255,0), # draw matches in green color
-                singlePointColor = None,matchesMask = matchesMask, # draw only inliers 
-                flags = 2)
-            img3 = cv2.drawMatches(cv_image,kp1,im1,kp2,good,None,**draw_params)
-            #cv2.imshow("match",img3)
-
-        
-        print("error_x:",error_x)
         
         twist_object.omega = -error_x/40
-        twist_object.omega = -error_x/25
+        twist_object.omega = -error_x/22
         twist_object.v = self.default_linear_speed 
-        print("current omega:",twist_object.omega)
-        print("current speed:",twist_object.v)
+        #print("current omega:",twist_object.omega)
+        #print("current speed:",twist_object.v)
         
         if self.match_stop_sign == True:
             twist_object.v = 0
@@ -214,14 +184,12 @@ class MyNode(DTROS):
         #self.turtlebot.move_robot(twist_object)
         #########################cv2.circle(res,(int(cx),int(cy)),10,(0,0,255),-1)
 	
-        #cv2.imshow("Original", cv_image)
-        #cv2.imshow("HSV",hsv)
-        msg = CompressedImage()
-        msg.header.stamp = rospy.Time.now()
-        msg.format = "jpeg"
+        #msg = CompressedImage()
+        #msg.header.stamp = rospy.Time.now()
+        #msg.format = "jpeg"
         #msg.data = np.array(cv2.imencode('.jpg', mask_red)[1]).tostring()
-        msg.data = np.array(cv2.imencode('.jpg', mask_yellow)[1]).tostring()
-        self.image_pub.publish(msg)
+        #msg.data = np.array(cv2.imencode('.jpg', mask_yellow)[1]).tostring()
+        #self.image_pub.publish(msg)
         self.cmd_vel_pub.publish(twist_object)
         #cv2.imshow("Path Decision",res)
         
@@ -235,6 +203,54 @@ class MyNode(DTROS):
             time.sleep(20)
             self.shutdown = True
         """
+    def detect_stop_sign(self):
+        if not self.image_to_detect_stop is None:
+            msg = CompressedImage()
+            msg.header.stamp = rospy.Time.now()
+            msg.format = "jpeg"
+            msg.data = np.array(cv2.imencode('.jpg', self.image_to_detect_stop)[1]).tostring()
+            self.image_pub.publish(msg)
+            MIN_MATCH_COUNT = 1
+            #self.sift = cv2.SIFT_create()#find the keypoinst and descriptors with SIFT
+            kp1, des1 = self.sift.detectAndCompute(self.image_to_detect_stop,None)
+            
+            FLANN_INDEX_KDTREE = 1
+            index_params = dict(algorithm = FLANN_INDEX_KDTREE, trees=5)
+            search_params = dict(checks = 50)
+		
+            flann = cv2.FlannBasedMatcher(index_params, search_params)
+            
+            matches = flann.knnMatch(des1, self.des2,k=2)
+            
+            good = []
+            for m,n in matches:
+                if m.distance < 0.7*n.distance:
+                    good.append(m)
+            
+            if len(good)>MIN_MATCH_COUNT:
+            # 150,50,50
+                print("stop sign found!!!!")
+                #src_pts = np.float32([ kp1[m.queryIdx].pt for m in good ]).reshape(-1,1,2)
+                #dst_pts = np.float32([ kp2[m.trainIdx].pt for m in good ]).reshape(-1,1,2)
+                #M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC,5.0)
+                #matchesMask = mask.ravel().tolist()
+                #h,w = im1.shape
+                #pts = np.float32([ [0,0],[0,h-1],[w-1,h-1],[w-1,0] ]).reshape(-1,1,2)
+                #dst = cv2.perspectiveTransform(pts,M)
+                #img2 = cv2.polylines(im1,[np.int32(dst)],True,255,3, cv2.LINE_AA)
+                self.match_stop_sign = True
+            else:
+                print( "Not enough matches are found - {}/{}".format(len(good),MIN_MATCH_COUNT))
+
+
+    def run(self):
+        # publish message every 1 second
+        rate = rospy.Rate(10) # 40Hz
+        print("I m runing---------------------------------------------------------------")
+        
+        while not rospy.is_shutdown():
+            self.detect_stop_sign()
+            rate.sleep()
 """
 class Robot():
     def __init__(self):
@@ -302,6 +318,8 @@ def main():
 
     try:
         my_node = MyNode(node_name = "path_finder")
+        my_node.run()
+        rospy.spin()
     except rospy.ROSInterruptException:
         rospy.loginfo("Navigation terminated.")
 if __name__ == '__main__':
