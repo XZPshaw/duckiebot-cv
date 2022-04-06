@@ -75,8 +75,8 @@ class MyNode(DTROS):
         width_crop_start = 160
         width_crop_end = 480 ###480x640x3
         rows_to_watch = 100
-        crop_img =cv_image[int((height)/2+ self.descenter):int((height)/2)+int(self.descenter+rows_to_watch),220:460,:]
-        
+        #crop_img =cv_image[int((height)/2+ self.descenter):int((height)/2)+int(self.descenter+rows_to_watch),220:460,:]
+        crop_img =cv_image[int((height)/2+ self.descenter):int((height)/2)+int(self.descenter+rows_to_watch),160:500,:]
         height, width, channels = crop_img.shape
         #print("crop_img:",crop_img.shape)
         hsv = cv2.cvtColor(crop_img,cv2.COLOR_BGR2HSV)
@@ -97,7 +97,7 @@ class MyNode(DTROS):
 
         lower_red = np.array([134,28,29])
         upper_red = np.array([179,255,255])
-               lower_red = np.array([148,51,79])
+        lower_red = np.array([148,51,79])
         upper_red = np.array([179,255,255]) 
         lower_red = np.array([148,51,79])
         upper_red = np.array([179,255,255])
@@ -184,12 +184,12 @@ class MyNode(DTROS):
         #self.turtlebot.move_robot(twist_object)
         #########################cv2.circle(res,(int(cx),int(cy)),10,(0,0,255),-1)
 	
-        #msg = CompressedImage()
-        #msg.header.stamp = rospy.Time.now()
-        #msg.format = "jpeg"
+        msg = CompressedImage()
+        msg.header.stamp = rospy.Time.now()
+        msg.format = "jpeg"
         #msg.data = np.array(cv2.imencode('.jpg', mask_red)[1]).tostring()
-        #msg.data = np.array(cv2.imencode('.jpg', mask_yellow)[1]).tostring()
-        #self.image_pub.publish(msg)
+        msg.data = np.array(cv2.imencode('.jpg', mask_yellow)[1]).tostring()
+        self.image_pub.publish(msg)
         self.cmd_vel_pub.publish(twist_object)
         #cv2.imshow("Path Decision",res)
         
@@ -209,7 +209,7 @@ class MyNode(DTROS):
             msg.header.stamp = rospy.Time.now()
             msg.format = "jpeg"
             msg.data = np.array(cv2.imencode('.jpg', self.image_to_detect_stop)[1]).tostring()
-            self.image_pub.publish(msg)
+            #self.image_pub.publish(msg)
             MIN_MATCH_COUNT = 1
             #self.sift = cv2.SIFT_create()#find the keypoinst and descriptors with SIFT
             kp1, des1 = self.sift.detectAndCompute(self.image_to_detect_stop,None)
