@@ -34,7 +34,7 @@ class MyNode(DTROS):
         self.image_pub = rospy.Publisher("/output/image_raw/compressed",CompressedImage,queue_size=1)
         self.cmd_vel_pub = rospy.Publisher('/%s/car_cmd_switch_node/cmd'%self.host,Twist2DStamped, queue_size=1)
         #self.turtlebot = Robot()
-        self.default_linear_speed = 0.25         # v
+        self.default_linear_speed = 0.22         # v
         #self.current_linear_speed = 0.2
         self.match_stop_sign = False
         self.red_zone_detected = False
@@ -48,6 +48,7 @@ class MyNode(DTROS):
         #self.im1 = cv2.imread(str(self.path)+"/src/stop.png",0)
         self.sift = cv2.SIFT_create()#find the keypoinst and descriptors with SIFT
         self.kp2, self.des2 = self.sift.detectAndCompute(self.im1, None)
+        self.previous_error = 0
     def shut_down_info(self):
         print("shuting downa")
         self.cmd_vel_pub.publish(Twist2DStamped())
@@ -76,7 +77,7 @@ class MyNode(DTROS):
         width_crop_end = 480 ###480x640x3
         rows_to_watch = 100
         #crop_img =cv_image[int((height)/2+ self.descenter):int((height)/2)+int(self.descenter+rows_to_watch),220:460,:]
-        crop_img =cv_image[int((height)/2+ self.descenter):int((height)/2)+int(self.descenter+rows_to_watch),160:500,:]
+        crop_img =cv_image[int((height)/2+ self.descenter-50):int((height)/2)+int(self.descenter+rows_to_watch),166:505,:]
         height, width, channels = crop_img.shape
         #print("crop_img:",crop_img.shape)
         hsv = cv2.cvtColor(crop_img,cv2.COLOR_BGR2HSV)
@@ -138,13 +139,17 @@ class MyNode(DTROS):
         m_path = cv2.moments(mask_yellow, False)
         m_red = cv2.moments(mask_red, False)
         
+
         error_x = 0
+        #if self.previous_error>0:
+        #    error_x = self.previous_error/8
         if len(contours_yellow) > 0:
         
             #print("m",m_path)
             try:
               cx,cy = m_path['m10']/m_path['m00'],m_path['m01']/m_path['m00']
               error_x = cx - width/2
+              self.previous_error = error_x
               #print("yellow path")
             except ZeroDivisionError:
               cx,cy = height/2, width/2
@@ -170,9 +175,8 @@ class MyNode(DTROS):
         #source:https://docs.opencv.org/3.4/d1/de0/tutorial_py_feature_homography.html
         """
         
-        
-        twist_object.omega = -error_x/40
-        twist_object.omega = -error_x/22
+        twist_object.omega = -error_x/25
+        print(twist_object.omega)
         twist_object.v = self.default_linear_speed 
         #print("current omega:",twist_object.omega)
         #print("current speed:",twist_object.v)
@@ -245,7 +249,7 @@ class MyNode(DTROS):
 
     def run(self):
         # publish message every 1 second
-        rate = rospy.Rate(10) # 40Hz
+        rate = rospy.Rate(3) # 40Hz
         print("I m runing---------------------------------------------------------------")
         
         while not rospy.is_shutdown():
